@@ -65,12 +65,12 @@ def main():
     print(f"Band present: {result['band_present']}")
     
     if args.print_json:
-        # Convert tuples to lists for JSON serialization
+        # Convert numpy types to native Python types for JSON serialization
         result_json = {
-            "num_lanes": result["num_lanes"],
-            "band_present": result["band_present"],
-            "lane_boxes": result["lane_boxes"],
-            "roi": result["roi"],
+            "num_lanes": int(result["num_lanes"]),
+            "band_present": [bool(b) for b in result["band_present"]],
+            "lane_boxes": [[int(x) for x in box] for box in result["lane_boxes"]],
+            "roi": [int(x) for x in result["roi"]],
         }
         print(json.dumps(result_json, indent=2))
     

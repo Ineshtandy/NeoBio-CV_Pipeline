@@ -1,6 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
 **/.DS_Store
-/NeoBio Input Images
-mask_post_morph.png
-mask_prior_morph.png
+Thumbs.db
+
+# Project specific
 /testing output images/
+/NeoBio Input Images
+*.png
+!docs/*.png

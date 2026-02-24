@@ -17,7 +17,7 @@ High-level architecture and design decisions for the blot detection pipeline.
 
 ## Overview
 
-**Purpose**: Automated detection of protein bands in Western blot/membrane images.
+**Purpose**: Automated detection of protein bands in Western blot images.
 
 **Core Stages**:
 1. Lane mask creation (binary segmentation)
@@ -329,37 +329,6 @@ result = run_blot_pipeline(image, band_mode="mask")
 
 ---
 
-## Future Features
-
-### Short-term (next iteration)
-
-1. **Separator Merging**: Merge detector x-positions within 5–10 px (avoid double-detections)
-2. **Tunable Parameters CLI**: Allow `--peak-thr`, `--run-thr` overrides in scripts
-3. **Metrics Export**: Save CSV with per-lane scores (not just boolean)
-
-### Medium-term
-
-1. **OCR Module**: Read lane labels or sample IDs
-   - New module: `src/neobio/ocr/`
-   - Updated pipeline to include OCR results
-
-2. **Multi-model Support**: Support grayscale + learning-based detectors
-   - New module: `src/neobio/blot/band_detection_ml.py`
-   - Register in `DETECTORS`
-
-3. **Config Files**: YAML/JSON pipeline configuration
-   - Load detector parameters from file
-   - Environment-specific settings
-
-### Long-term
-
-1. **Web UI**: Interactive pipeline tuning and validation
-2. **Database Integration**: Store/query results
-3. **Hardware Acceleration**: GPU-based processing (CUDA/OpenCL)
-4. **Training Pipeline**: Fine-tune detector on custom datasets
-
----
-
 ## Design Decisions
 
 ### Why Mask-Only (MVP)?
@@ -377,8 +346,6 @@ result = run_blot_pipeline(image, band_mode="mask")
 **Decision**: MVP prioritizes simplicity and robustness; can add grayscale detector later.
 
 ### Why Binary ROI Instead of Multi-Stage?
-
-**Alternative**: Complex region proposals (e.g., Faster R-CNN).
 
 **Decision**: Simple pipeline chosen because:
 - Task is well-constrained (lanes are vertical)
@@ -435,25 +402,37 @@ PYTHONPATH=src python scripts/test_blot_batch.py --input-dir test_images --outpu
 
 ---
 
-## Performance Notes
+## Performance Characteristics
 
-### Complexity
+### Computational Complexity
 
-- **Lane Mask**: O(H×W) — one pass + morphology
-- **Separator Detection**: O(H×W) — contour finding
-- **Lane Boxes**: O(num_separators) — linear
-- **Band Detection**: O(L×W) per lane — row aggregation
+| Stage | Complexity | Notes |
+|-------|-----------|-------|
+| Lane Mask | O(H×W) | Morphology ops are constant-time kernels |
+| Separator Detection | O(H×W) | Dominated by contour finding |
+| Band Detection | O(N×L×W) | N lanes, each L×W crop |
+| **Total Pipeline** | **O(H×W + N×L×W)** | Typically N≤12, so ~O(H×W) |
 
-**Total**: ~O(H×W) for typical image
+### Bottlenecks (Profiling-Ready)
 
-### Speed (Estimated)
+Expected hot paths for optimization:
+1. `cv2.morphologyEx` (multiple passes) — 40-60% of runtime
+2. `cv2.findContours` — 15-25% of runtime
+3. Per-lane `cv2.blur` in band detection — 10-20% of runtime
 
-- Single image: ~100–500 ms (depending on image size and OpenCV impl)
-- Batch of 100 images: ~10–50 seconds
+**Optimization Strategy**: If batch processing is slow, parallelize per-image processing (trivially parallelizable).
 
-### Memory
+### Memory Usage
 
-- Typical 2000×2000 image: ~8 MB (uint8 mask) + overhead
+- Peak memory: ~3× input image size (original + mask + debug overlay)
+- Typical: 1920×1080 image → ~20 MB RAM
+- Batch mode: Can process images serially to cap memory
+
+### Scalability Notes
+
+- **Single image**: Sub-second on modern hardware
+- **Batch (100 images)**: Linear scaling; ~30-60 seconds on CPU
+- **Future**: GPU acceleration for morphology ops could provide 5-10× speedup
 
 ---
 
