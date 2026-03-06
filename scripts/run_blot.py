@@ -87,7 +87,7 @@ def main():
         debug_path = args.debug_out
     else:
         debug_path = default_out_path(args.image, args.debug_dir)
-    
+        
     cv2.imwrite(debug_path, debug_img)
     print(f"Debug image saved: {debug_path}")
 
