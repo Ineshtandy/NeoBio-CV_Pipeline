@@ -37,6 +37,7 @@ def auto_grey_range(gray: np.ndarray) -> Tuple[int, int]:
     Returns:
         (low, high) grey value thresholds
     """
+    
     # Filter pixels that are likely part of the blot region
     vals = gray[(gray >= 165) & (gray <= 245)]
     if vals.size < 1000:
@@ -47,7 +48,7 @@ def auto_grey_range(gray: np.ndarray) -> Tuple[int, int]:
     hi = np.percentile(vals, 95)
 
     # Pad a bit for safety
-    grey_low = int(max(0, lo - 15))
+    grey_low = int(max(0, lo - 15)) # never reach 0 since capped to 165 above
     grey_high = int(min(245, hi + 5))
     return grey_low, grey_high
 
@@ -200,6 +201,7 @@ def lanes_from_separators(
         right = boundaries[i + 1]
         
         # Apply padding to avoid separator regions
+        # shrinking the sliced region to contain only relevant rectangle
         lx = left + pad
         rx = right - pad
         if rx - lx + 1 < min_lane_width:
@@ -208,6 +210,7 @@ def lanes_from_separators(
         # Convert back to full image coordinates
         lane_x1 = x1 + lx
         lane_x2 = x1 + rx
+        # top left, bottom right coordinates for each lane
         lanes.append((lane_x1, y1, lane_x2, y2))
     
     return lanes
