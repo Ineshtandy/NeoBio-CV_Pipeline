@@ -209,6 +209,97 @@ PYTHONPATH=src python scripts/run_blot.py image.jpg --band-mode mask
 - Input folder `NeoBio Input Images/` is ignored by git
 - Output folder `testing output images/` contains debug results
 
+## OCR Preparation Pipeline
+
+Produces a stitched image of the regions **above** and **below** the blot ROI,
+ready for downstream OCR processing.  Text extraction is not performed here.
+
+### Single Image
+
+```bash
+PYTHONPATH=src python scripts/run_ocr_prep.py path/to/image.jpg
+```
+
+Output:
+```
+Stitched image saved: ocr_prep_debug/image_stitched.png
+```
+
+With debug artefacts and JSON metadata:
+```bash
+PYTHONPATH=src python scripts/run_ocr_prep.py path/to/image.jpg \
+  --debug --debug-dir "ocr_prep_debug" \
+  --top-extra-bottom-px 5 \
+  --bottom-extra-top-px 5 \
+  --gap-px 20 \
+  --print-json
+```
+
+JSON output schema:
+```json
+{
+  "roi": [x1, y1, x2, y2],
+  "top_region_bounds": [x1, y1, x2, y2],
+  "bottom_region_bounds": [x1, y1, x2, y2],
+  "top_region_shape": [h, w, c],
+  "bottom_region_shape": [h, w, c],
+  "stitched_shape": [h, w, c],
+  "stitched_path": "ocr_prep_debug/image_stitched.png",
+  "debug_dir": "ocr_prep_debug/image"
+}
+```
+
+Debug artefacts saved per image (when `--debug` is set):
+```
+ocr_prep_debug/<image_stem>/
+  01_full_image.png
+  02_lane_mask.png
+  03_top_region.png
+  04_bottom_region.png
+  05_stitched_ocr_input.png
+  06_roi_overlay.png
+```
+
+### Python API
+
+```python
+import cv2
+from neobio.pipelines import run_ocr_prep_pipeline
+
+image = cv2.imread("path/to/image.jpg")
+result = run_ocr_prep_pipeline(
+    image,
+    top_extra_bottom_px=5,    # extend top strip 5 px into ROI
+    bottom_extra_top_px=5,    # extend bottom strip 5 px into ROI
+    gap_px=20,                # white separator between strips
+    debug=True,
+    debug_dir="ocr_prep_debug",
+    input_path="path/to/image.jpg",
+)
+
+stitched = result["stitched_image"]  # numpy.ndarray ready for OCR
+roi      = result["roi"]             # (x1, y1, x2, y2)
+```
+
+### Project Structure (updated)
+
+```
+src/neobio/
+├── blot/           # Lane mask + ROI extraction (unchanged)
+├── ocr/            # NEW — OCR prep helpers
+│   ├── __init__.py
+│   └── region_stitching.py   # bounds helpers, crop_region, stitch_regions
+├── pipelines/
+│   ├── blot_pipeline.py      # unchanged
+│   └── ocr_prep_pipeline.py  # NEW — OCR prep orchestrator
+└── utils/          # I/O and debug draw helpers (unchanged)
+
+scripts/
+├── run_blot.py         # unchanged
+├── run_ocr_prep.py     # NEW — single-image OCR prep CLI
+└── test_blot_batch.py  # unchanged
+```
+
 ## Related Documentation
 
 - [DESIGN.md](DESIGN.md) - Detailed architecture and design decisions
