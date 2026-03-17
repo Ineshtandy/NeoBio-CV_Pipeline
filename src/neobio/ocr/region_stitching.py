@@ -178,6 +178,59 @@ def crop_region(
 
 
 # ---------------------------------------------------------------------------
+# Rotation
+# ---------------------------------------------------------------------------
+
+
+def rotate_image_bound(
+    image: np.ndarray,
+    angle_deg: float,
+    border_value=(255, 255, 255),
+) -> np.ndarray:
+    """
+    Rotate an image around its center while expanding bounds to avoid cropping.
+
+    Args:
+        image: Source image (BGR or grayscale ``numpy.ndarray``).
+        angle_deg: Rotation angle in degrees. Positive values rotate
+            counter-clockwise.
+        border_value: Fill value for exposed background. Defaults to white.
+
+    Returns:
+        Rotated image with expanded canvas.
+
+    Raises:
+        ValueError: If ``image`` is empty.
+    """
+    if image is None or image.size == 0:
+        raise ValueError("Cannot rotate an empty image.")
+
+    h, w = image.shape[:2]
+    cx, cy = w / 2.0, h / 2.0
+
+    m = cv2.getRotationMatrix2D((cx, cy), angle_deg, 1.0)
+
+    cos = abs(m[0, 0])
+    sin = abs(m[0, 1])
+
+    new_w = int(round((h * sin) + (w * cos)))
+    new_h = int(round((h * cos) + (w * sin)))
+
+    # Re-center the transformed image on the expanded canvas.
+    m[0, 2] += (new_w / 2.0) - cx
+    m[1, 2] += (new_h / 2.0) - cy
+
+    return cv2.warpAffine(
+        image,
+        m,
+        (new_w, new_h),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=border_value,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Stitching
 # ---------------------------------------------------------------------------
 
