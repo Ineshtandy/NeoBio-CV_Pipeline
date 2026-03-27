@@ -7,7 +7,7 @@ A scalable computer vision pipeline for automated blot detection and lane band p
 This package provides:
 - **Lane Detection**: Automatically detects lanes in blot/membrane images
 - **Band Detection**: MVP mask-only detector identifies protein bands in each lane
-- **OCR Preparation**: Crops/stitches top and bottom text regions around blot ROI
+- **OCR Preparation**: Crops and stitches text regions around blot ROI for downstream processing
 - **OCR Extraction Pipeline**: Runs Google Vision OCR and post-processes labels/identifiers
 - **Batch Processing**: Process entire image directories with consistent output
 - **Debug Visualization**: Generate annotated debug images for inspection
@@ -26,11 +26,13 @@ This package provides:
 pip install opencv-python numpy google-cloud-vision
 ```
 
-## Quick Start
+## Running Instructions
 
-### Single Image Processing
+### Blot Detection (Lane + Band Analysis)
 
-Detect lanes and bands in a single image:
+The simplest workflow: detect lanes and identify which lanes contain protein bands.
+
+**Single Image**
 
 ```bash
 PYTHONPATH=src python scripts/run_blot.py path/to/image.jpeg
@@ -43,9 +45,14 @@ Band present: [True, False, True, False, True, False, False, True]
 Debug image saved: testing output images/image_debug.png
 ```
 
-### Batch Processing
+With JSON output:
+```bash
+PYTHONPATH=src python scripts/run_blot.py "NeoBio Input Images/sample.jpg" --print-json
+```
 
-Process all images in a directory (replaces old `test_run()`):
+**Batch Processing**
+
+Process all images in a directory:
 
 ```bash
 PYTHONPATH=src python scripts/test_blot_batch.py \
@@ -62,13 +69,156 @@ Found 12 image(s)
 Summary: 12 processed, 0 failed (total: 12)
 ```
 
+With custom band mode:
+```bash
+PYTHONPATH=src python scripts/run_blot.py image.jpg --band-mode mask
+```
+
+---
+
+### OCR Preparation (Text Region Extraction)
+
+Extract and stitch text regions above and below the blot for downstream OCR processing. No text extraction performed here—only image preparation.
+
+**Single Image**
+
+```bash
+PYTHONPATH=src python scripts/run_ocr_prep.py path/to/image.jpg
+```
+
+Output:
+```
+Stitched image saved: ocr_prep_debug/image_stitched.png
+```
+
+**With Debug Output and JSON Metadata**
+
+```bash
+PYTHONPATH=src python scripts/run_ocr_prep.py path/to/image.jpg \
+  --debug --debug-dir "ocr_prep_debug" \
+  --top-extra-bottom-px 5 \
+  --bottom-extra-top-px 5 \
+  --gap-px 20 \
+  --print-json
+```
+
+Debug artifacts saved per image:
+```
+ocr_prep_debug/<image_stem>/
+  01_full_image.png
+  02_lane_mask.png
+  03_top_region.png
+  04_bottom_region.png
+  05_stitched_ocr_input.png
+  06_roi_overlay.png
+```
+
+---
+
+### Integrated Pipeline (Recommended: Reactivity Output)
+
+Complete end-to-end workflow using shared preprocessing for both OCR and blot branches, then merges outputs into final reactivity mapping.
+
+**Single Image**
+
+```bash
+PYTHONPATH=src python scripts/run_integrated_pipeline.py path/to/image.jpg
+```
+
+Output:
+```
+Identifier: NKX2.1/15721
+Reactivity mapping:
+- PAX8: True
+- NAPSIN A: False
+...
+```
+
+**With Debug + JSON Export**
+
+```bash
+PYTHONPATH=src python scripts/run_integrated_pipeline.py path/to/image.jpg \
+  --debug --debug-dir "testing output images/integrated_pipeline_debug" \
+  --output-json "testing output images/integrated_pipeline_output/result_integrated.json" \
+  --stitched-out "testing output images/integrated_pipeline_output/result_stitched.png"
+```
+
+---
+
+### OCR-Only Pipeline (Text Extraction)
+
+Complete end-to-end OCR workflow: image analysis → region extraction → Google Vision OCR → text post-processing.
+
+**Single Image**
+
+```bash
+PYTHONPATH=src python scripts/run_ocr_pipeline.py path/to/image.jpg
+```
+
+**With Full Options**
+
+```bash
+PYTHONPATH=src python scripts/run_ocr_pipeline.py path/to/image.jpg \
+  --top-extra-bottom-px 6 \
+  --bottom-extra-top-px 6 \
+  --top-rotation-deg -52.2 \
+  --stitch-gap-px 20 \
+  --debug --debug-dir "testing output images/ocr_pipeline_debug"
+```
+
+**Backend-Only OCR Test**
+
+Test OCR processing on a pre-stitched image:
+
+```bash
+PYTHONPATH=src python scripts/test_google_vision_ocr.py path/to/stitched.png
+```
+
+---
+
+## Project Structure
+
+```
+src/neobio/
+├── __init__.py
+├── blot/
+│   ├── __init__.py
+│   ├── lane_mask.py              # Lane detection and ROI extraction
+│   ├── band_detection.py         # MVP mask-only band detector
+│   └── band_detection_legacy.py  # Legacy reference implementations (not used by default)
+├── ocr/
+│   ├── __init__.py
+│   ├── region_stitching.py       # Region bounds, cropping, rotation, and stitching helpers
+│   ├── google_vision_backend.py  # Google Vision API calls and response parsing
+│   └── ocr_postprocess.py        # Text post-processing (split, group, sort, join)
+├── pipelines/
+│   ├── __init__.py
+│   ├── blot_pipeline.py          # Main blot lane/band orchestrator
+│   ├── ocr_prep_pipeline.py      # OCR region extraction and stitching (no text analysis)
+│   ├── ocr_pipeline.py           # Full OCR orchestrator (prep → Vision → post-process)
+│   └── shared_preprocessing.py   # Common preprocessing utilities
+└── utils/
+    ├── __init__.py
+    ├── debug_draw.py             # Visualization and debug image generation
+    └── io.py                     # File I/O helpers
+
+scripts/
+├── run_blot.py                   # Single-image blot lane/band detection
+├── test_blot_batch.py            # Batch lane/band detection for directories
+├── run_ocr_prep.py               # Single-image OCR region extraction
+├── run_ocr_pipeline.py           # Single-image OCR-only extraction pipeline
+├── run_integrated_pipeline.py    # Single-image integrated OCR + blot + reactivity pipeline
+└── test_google_vision_ocr.py     # Backend-only OCR test (Vision API call + parsing)
+```
+
 ## Python API
 
-### Basic Usage
+### Blot Pipeline
+
+**Basic Usage**
 
 ```python
 import sys
-from pathlib import Path
 sys.path.insert(0, "src")
 
 import cv2
@@ -92,7 +242,7 @@ debug_img = draw_blot_debug(image, roi, lane_boxes, band_present)
 cv2.imwrite("debug.png", debug_img)
 ```
 
-### Output Format
+**Output Format**
 
 ```python
 {
@@ -103,61 +253,155 @@ cv2.imwrite("debug.png", debug_img)
 }
 ```
 
-## Configuration
+---
 
-### Band Detector Parameters
+### OCR Preparation Pipeline
 
-The MVP detector `has_band_mask()` supports customizable parameters:
+Extract and stitch text regions around the blot ROI without performing text analysis.
 
-- `top_crop_frac` (float, default: 0.15): Crop fraction from top
-- `bottom_crop_frac` (float, default: 0.15): Crop fraction from bottom
-- `edge_margin_px` (int, default: 6): Margin from edges (pixels)
-- `smooth_kernel_h` (int, default: 9): Smoothing kernel height
-- `peak_thr` (float, default: 0.12): Peak threshold
-- `run_thr` (float, default: 0.08): Run-length threshold
-- `min_run` (int, default: 10): Minimum run length
+```python
+import cv2
+from neobio.pipelines import run_ocr_prep_pipeline
 
-## Project Structure
+image = cv2.imread("path/to/image.jpg")
+result = run_ocr_prep_pipeline(
+    image,
+    top_extra_bottom_px=5,    # Extend top strip 5 px into ROI
+    bottom_extra_top_px=5,    # Extend bottom strip 5 px into ROI
+    gap_px=20,                # White separator between strips
+    debug=True,
+    debug_dir="ocr_prep_debug",
+    input_path="path/to/image.jpg",
+)
 
-```
-src/neobio/
-├── __init__.py
-├── blot/
-│   ├── __init__.py
-│   ├── lane_mask.py              # Lane detection, ROI extraction
-│   ├── band_detection.py         # MVP mask-only band detector
-│   └── band_detection_legacy.py  # Legacy reference implementations
-├── ocr/
-│   ├── __init__.py
-│   ├── region_stitching.py       # OCR bounds/crop/rotate/stitch helpers
-│   ├── google_vision_backend.py  # Google Vision OCR call + response parsing
-│   └── ocr_postprocess.py        # OCR item split/group/join helpers
-├── pipelines/
-│   ├── __init__.py
-│   ├── blot_pipeline.py          # Main blot orchestrator
-│   ├── ocr_prep_pipeline.py      # Stitched OCR image generation only
-│   └── ocr_pipeline.py           # OCR prep + Vision + postprocessing
-└── utils/
-    ├── __init__.py
-    ├── debug_draw.py             # Visualization
-    └── io.py                     # I/O helpers
-
-scripts/
-├── run_blot.py                   # Single-image blot runner
-├── test_blot_batch.py            # Batch blot processor
-├── run_ocr_prep.py               # Single-image OCR prep runner
-├── run_ocr_pipeline.py           # Single-image OCR extraction runner
-└── test_google_vision_ocr.py     # Backend-only OCR test runner
+stitched = result["stitched_image"]  # numpy.ndarray ready for OCR
+roi      = result["roi"]             # (x1, y1, x2, y2)
 ```
 
-## Lane Detection Pipeline
+**Output Schema**
+
+```json
+{
+  "roi": [x1, y1, x2, y2],
+  "top_region_bounds": [x1, y1, x2, y2],
+  "bottom_region_bounds": [x1, y1, x2, y2],
+  "top_region_shape": [h, w, c],
+  "bottom_region_shape": [h, w, c],
+  "stitched_shape": [h, w, c],
+  "stitched_path": "ocr_prep_debug/image_stitched.png",
+  "debug_dir": "ocr_prep_debug/image"
+}
+```
+
+---
+
+### Integrated Pipeline
+
+Run OCR and blot branches with one shared preprocessing context, then merge into a final reactivity view.
+
+```python
+import cv2
+from neobio.pipelines import run_integrated_pipeline
+
+image = cv2.imread("path/to/image.jpg")
+result = run_integrated_pipeline(
+    image,
+    debug=True,
+    debug_dir="testing output images/integrated_pipeline_debug",
+)
+```
+
+**Output Fields**
+
+```python
+{
+  "identifier": "...",
+  "reactivity": {"PAX8": True, "NAPSIN A": False, ...},
+  "ocr": {
+    "top_labels": ["...", "..."],
+    "bottom_identifier": "...",
+    "top_items": [...],
+    "bottom_items": [...],
+    "raw_text": "...",
+    "stitch_boundary_y": int,
+    "top_region_bounds": (x1, y1, x2, y2),
+    "bottom_region_bounds": (x1, y1, x2, y2),
+    "stitched_image": np.ndarray,
+  },
+  "blot": {
+    "num_lanes": int,
+    "lane_boxes": [(x1, y1, x2, y2), ...],
+    "band_present": [True, False, ...],
+  },
+  "lanes": [...],
+  "meta": {...}
+}
+```
+
+---
+
+### OCR-Only Pipeline
+
+Complete text extraction from original image to processed output.
+
+```python
+import cv2
+from neobio.pipelines import run_ocr_pipeline
+
+image = cv2.imread("path/to/image.jpg")
+result = run_ocr_pipeline(
+    image,
+    top_extra_bottom_px=6,
+    bottom_extra_top_px=6,
+    top_rotation_deg=-52.2,
+    stitch_gap_px=20,
+    debug=True,
+    debug_dir="testing output images/ocr_pipeline_debug",
+)
+```
+
+**Output Fields**
+
+```python
+{
+  "roi": (x1, y1, x2, y2),
+  "top_region_bounds": (x1, y1, x2, y2),
+  "bottom_region_bounds": (x1, y1, x2, y2),
+  "stitch_boundary_y": int,
+  "top_labels": ["...", "..."],
+  "bottom_identifier": "...",
+  "top_items": [...],
+  "bottom_items": [...],
+  "raw_text": "...",
+  "stitched_image": np.ndarray,
+}
+```
+
+**Debug Artifacts**
+
+```
+ocr_pipeline_debug/<timestamp>/
+  01_full_image.png
+  02_top_crop.png
+  03_top_crop_rotated.png
+  04_bottom_crop.png
+  05_stitched_ocr_input.png
+```
+
+---
+
+## Understanding the Pipelines
+
+### Lane Detection Algorithm
+
+The lane detection pipeline processes images in four steps:
 
 1. **Mask Creation** (`build_lane_mask`): Converts image to binary mask (lanes white, separators black)
 2. **ROI Extraction** (`roi_from_mask`): Finds bounding box of blot region
 3. **Separator Detection** (`find_vertical_separators`): Detects lane dividing lines
 4. **Lane Boxes** (`lanes_from_separators`): Generates individual lane bounding boxes
 
-## Band Detection
+### Band Detection Algorithm
 
 **MVP Strategy**: Mask-only detection
 
@@ -176,6 +420,12 @@ scripts/
 5. Else: return False (white/no band)
 ```
 
+**Configuration Parameters**
+
+For detailed band detector configuration parameters (thresholds, crop fractions, kernel sizes), see [DESIGN.md](DESIGN.md#band-detector-configuration).
+
+---
+
 ## Development
 
 ### Testing
@@ -184,23 +434,23 @@ scripts/
 # Single image with JSON output
 PYTHONPATH=src python scripts/run_blot.py "NeoBio Input Images/sample.jpg" --print-json
 
-# Batch with all images
+# Batch processing all images
 PYTHONPATH=src python scripts/test_blot_batch.py
 
-# Custom band mode
+# Custom band detection mode
 PYTHONPATH=src python scripts/run_blot.py image.jpg --band-mode mask
 ```
 
-### Adding New Detectors
+### Adding New Band Detectors
 
-1. Implement function in `src/neobio/blot/band_detection.py`:
+1. Implement detector function in `src/neobio/blot/band_detection.py`:
    ```python
    def my_detector(lane_mask: np.ndarray) -> bool:
        # Detection logic
        return True or False
    ```
 
-2. Register in `DETECTORS`:
+2. Register in `DETECTORS` dictionary:
    ```python
    DETECTORS["my_mode"] = my_detector
    ```
@@ -210,171 +460,15 @@ PYTHONPATH=src python scripts/run_blot.py image.jpg --band-mode mask
    PYTHONPATH=src python scripts/run_blot.py image.jpg --band-mode my_mode
    ```
 
-## Legacy Code
-
-- Original implementation: `old_blot_detect.py` (preserved for reference)
-- Legacy detectors: `src/neobio/blot/band_detection_legacy.py` (not used by default)
+---
 
 ## Notes
 
 - Temporary debug artifacts (e.g., `mask_post_morph.png`) are in `.gitignore`
 - Input folder `NeoBio Input Images/` is ignored by git
-- Output folder `testing output images/` contains debug results
-
-## OCR Preparation Pipeline
-
-Produces a stitched image of the regions **above** and **below** the blot ROI,
-ready for downstream OCR processing.  Text extraction is not performed here.
-
-### Single Image
-
-```bash
-PYTHONPATH=src python scripts/run_ocr_prep.py path/to/image.jpg
-```
-
-Output:
-```
-Stitched image saved: ocr_prep_debug/image_stitched.png
-```
-
-With debug artefacts and JSON metadata:
-```bash
-PYTHONPATH=src python scripts/run_ocr_prep.py path/to/image.jpg \
-  --debug --debug-dir "ocr_prep_debug" \
-  --top-extra-bottom-px 5 \
-  --bottom-extra-top-px 5 \
-  --gap-px 20 \
-  --print-json
-```
-
-JSON output schema:
-```json
-{
-  "roi": [x1, y1, x2, y2],
-  "top_region_bounds": [x1, y1, x2, y2],
-  "bottom_region_bounds": [x1, y1, x2, y2],
-  "top_region_shape": [h, w, c],
-  "bottom_region_shape": [h, w, c],
-  "stitched_shape": [h, w, c],
-  "stitched_path": "ocr_prep_debug/image_stitched.png",
-  "debug_dir": "ocr_prep_debug/image"
-}
-```
-
-Debug artefacts saved per image (when `--debug` is set):
-```
-ocr_prep_debug/<image_stem>/
-  01_full_image.png
-  02_lane_mask.png
-  03_top_region.png
-  04_bottom_region.png
-  05_stitched_ocr_input.png
-  06_roi_overlay.png
-```
-
-### Python API
-
-```python
-import cv2
-from neobio.pipelines import run_ocr_prep_pipeline
-
-image = cv2.imread("path/to/image.jpg")
-result = run_ocr_prep_pipeline(
-    image,
-    top_extra_bottom_px=5,    # extend top strip 5 px into ROI
-    bottom_extra_top_px=5,    # extend bottom strip 5 px into ROI
-    gap_px=20,                # white separator between strips
-    debug=True,
-    debug_dir="ocr_prep_debug",
-    input_path="path/to/image.jpg",
-)
-
-stitched = result["stitched_image"]  # numpy.ndarray ready for OCR
-roi      = result["roi"]             # (x1, y1, x2, y2)
-```
-
-### Project Structure (updated)
-
-```
-src/neobio/
-├── blot/           # Lane mask + ROI extraction (unchanged)
-├── ocr/            # OCR helpers
-│   ├── __init__.py
-│   ├── region_stitching.py       # bounds helpers, crop_region, rotate_image_bound, stitch_regions
-│   ├── google_vision_backend.py  # run_google_vision_ocr + annotation normalization
-│   └── ocr_postprocess.py        # split/group/sort/join post-processing helpers
-├── pipelines/
-│   ├── blot_pipeline.py      # unchanged
-│   ├── ocr_prep_pipeline.py  # OCR prep orchestrator (no OCR text extraction)
-│   └── ocr_pipeline.py       # Full OCR orchestrator
-└── utils/          # I/O and debug draw helpers (unchanged)
-
-scripts/
-├── run_blot.py         # unchanged
-├── run_ocr_prep.py     # OCR prep CLI
-├── run_ocr_pipeline.py # Full OCR pipeline CLI
-├── test_google_vision_ocr.py # Backend-only OCR CLI
-└── test_blot_batch.py  # unchanged
-```
-
-## OCR Text Extraction Pipeline
-
-Runs complete OCR flow from original image to text outputs.
-
-### Single Image
-
-```bash
-PYTHONPATH=src python scripts/run_ocr_pipeline.py path/to/image.jpg
-```
-
-Common options:
-
-```bash
-PYTHONPATH=src python scripts/run_ocr_pipeline.py path/to/image.jpg \
-  --top-extra-bottom-px 6 \
-  --bottom-extra-top-px 6 \
-  --top-rotation-deg -52.2 \
-  --stitch-gap-px 20 \
-  --debug --debug-dir "testing output images/ocr_pipeline_debug"
-```
-
-Backend-only OCR test from a stitched image:
-
-```bash
-PYTHONPATH=src python scripts/test_google_vision_ocr.py path/to/stitched.png
-```
-
-Output fields from `run_ocr_pipeline(...)`:
-
-```python
-{
-  "roi": (x1, y1, x2, y2),
-  "top_region_bounds": (x1, y1, x2, y2),
-  "bottom_region_bounds": (x1, y1, x2, y2),
-  "stitch_boundary_y": int,
-  "top_labels": ["...", "..."],
-  "bottom_identifier": "...",
-  "top_items": [...],
-  "bottom_items": [...],
-  "raw_text": "...",
-  "stitched_image": np.ndarray,
-}
-```
-
-Debug artefacts (when `--debug` is set):
-
-```
-ocr_pipeline_debug/<timestamp>/
-  01_full_image.png
-  02_top_crop.png
-  03_top_crop_rotated.png
-  04_bottom_crop.png
-  05_stitched_ocr_input.png
-```
-
-Google Vision notes:
-- Set up credentials before running OCR (`GOOGLE_APPLICATION_CREDENTIALS`).
-- OCR backend raises clear errors for image-encode failures and API errors.
+- Output folder `testing output images/` contains debug results and test outputs
+- For OCR and integrated pipelines: Set up Google Cloud credentials before running (`GOOGLE_APPLICATION_CREDENTIALS` environment variable)
+- OCR backend raises clear errors for image-encode failures and API errors
 
 ## Related Documentation
 

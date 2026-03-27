@@ -14,7 +14,6 @@ from typing import Any
 import cv2
 import numpy as np
 
-from ..blot.lane_mask import build_lane_mask, roi_from_mask
 from ..ocr.google_vision_backend import run_google_vision_ocr
 from ..ocr.ocr_postprocess import (
     build_top_labels,
@@ -28,12 +27,15 @@ from ..ocr.region_stitching import (
     rotate_image_bound,
     stitch_regions,
 )
+from .shared_preprocessing import compute_shared_blot_context
 from ..utils.io import ensure_dir
 
 
 def run_ocr_pipeline(
     image_bgr: np.ndarray,
     *,
+    lane_mask: np.ndarray | None = None,
+    roi: tuple | None = None,
     top_extra_bottom_px: int = 6,
     bottom_extra_top_px: int = 6,
     top_rotation_deg: float = -52.2,
@@ -55,17 +57,22 @@ def run_ocr_pipeline(
     if stitch_gap_px < 0:
         raise ValueError(f"stitch_gap_px must be >= 0, got {stitch_gap_px}")
 
-    mask = build_lane_mask(image_bgr)
-    roi = roi_from_mask(mask)
+    if lane_mask is not None and roi is not None:
+        mask = lane_mask
+        roi_bounds = roi
+    else:
+        shared_context = compute_shared_blot_context(image_bgr)
+        mask = shared_context["lane_mask"]
+        roi_bounds = shared_context["roi"]
 
     top_bounds = compute_top_ocr_region_bounds(
         image_bgr.shape,
-        roi,
+        roi_bounds,
         top_extra_bottom_px=top_extra_bottom_px,
     )
     bottom_bounds = compute_bottom_ocr_region_bounds(
         image_bgr.shape,
-        roi,
+        roi_bounds,
         bottom_extra_top_px=bottom_extra_top_px,
     )
 
@@ -112,7 +119,7 @@ def run_ocr_pipeline(
         )
 
     return {
-        "roi": roi,
+        "roi": roi_bounds,
         "top_region_bounds": top_bounds,
         "bottom_region_bounds": bottom_bounds,
         "stitch_boundary_y": stitch_boundary_y,

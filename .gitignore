@@ -29,3 +29,5 @@ Thumbs.db
 /NeoBio Input Images
 *.png
 !docs/*.png
+*.jpg
+demo1.json
